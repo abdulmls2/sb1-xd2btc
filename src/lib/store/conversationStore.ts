@@ -30,6 +30,8 @@ interface ConversationStore {
   deleteTag: (id: string) => Promise<void>;
   sortOrder: 'newest' | 'oldest';
   setSortOrder: (order: 'newest' | 'oldest') => void;
+  activeFilter: 'unread' | 'all' | 'expired' | 'completed';
+  setActiveFilter: (filter: 'unread' | 'all' | 'expired' | 'completed') => void;
 }
 
 export const useConversationStore = create<ConversationStore>((set, get) => ({
@@ -41,6 +43,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
   isLoading: false,
   error: null,
   sortOrder: 'newest',
+  activeFilter: 'unread' as 'unread' | 'all' | 'expired' | 'completed',
 
   setSelectedTags: (tags: string[]) => {
     set({ selectedTags: tags });
@@ -64,6 +67,15 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         `)
         .eq('status', 'active')
         .order('last_message_at', { ascending: sortOrder === 'oldest' });
+
+      switch (get().activeFilter) {
+        case 'unread':
+          query = query.eq('is_read', false);
+          break;
+        case 'completed':
+          query = query.eq('is_starred', true);
+          break;
+      }
 
       if (selectedTags.length > 0) {
         const { data, error } = await query;
@@ -382,6 +394,11 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
 
   setSortOrder: (order: 'newest' | 'oldest') => {
     set({ sortOrder: order });
+    get().fetchConversations();
+  },
+
+  setActiveFilter: (filter: 'unread' | 'all' | 'expired' | 'completed') => {
+    set({ activeFilter: filter });
     get().fetchConversations();
   },
 }));
