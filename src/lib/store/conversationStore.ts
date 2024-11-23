@@ -6,12 +6,14 @@ import { toast } from 'react-hot-toast';
 type Conversation = Database['public']['Tables']['conversations']['Row'];
 type Message = Database['public']['Tables']['messages']['Row'];
 type Tag = Database['public']['Tables']['tags']['Row'];
+type ConversationTag = Database['public']['Tables']['conversation_tags']['Row'];
 
 interface ConversationStore {
-  conversations: Conversation[];
-  currentConversation: Conversation | null;
+  conversations: (Conversation & { tags?: Tag[] })[];
+  currentConversation: (Conversation & { tags?: Tag[] }) | null;
   messages: Message[];
   tags: Tag[];
+  selectedTags: string[];
   isLoading: boolean;
   error: string | null;
   fetchConversations: () => Promise<void>;
@@ -22,6 +24,10 @@ interface ConversationStore {
   updateConversation: (id: string, updates: Partial<Conversation>) => Promise<void>;
   addTag: (conversationId: string, tagId: string) => Promise<void>;
   removeTag: (conversationId: string, tagId: string) => Promise<void>;
+  setSelectedTags: (tags: string[]) => void;
+  fetchConversationTags: (conversationId: string) => Promise<Tag[]>;
+  createTag: (name: string, color: string) => Promise<void>;
+  deleteTag: (id: string) => Promise<void>;
 }
 
 export const useConversationStore = create<ConversationStore>((set, get) => ({
@@ -29,19 +35,67 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
   currentConversation: null,
   messages: [],
   tags: [],
+  selectedTags: [],
   isLoading: false,
   error: null,
+
+  setSelectedTags: (tags: string[]) => {
+    set({ selectedTags: tags });
+  },
 
   fetchConversations: async () => {
     set({ isLoading: true, error: null });
     try {
-      const { data, error } = await supabase
+      const { selectedTags } = get();
+      let query = supabase
         .from('conversations')
-        .select('*')
+        .select(`
+          *,
+          conversation_tags!left (
+            tags (
+              id,
+              name,
+              color
+            )
+          )
+        `)
+        .eq('status', 'active')
         .order('last_message_at', { ascending: false });
 
-      if (error) throw error;
-      set({ conversations: data || [] });
+      if (selectedTags.length > 0) {
+        const { data, error } = await query;
+        if (error) throw error;
+
+        const filteredConversations = data.filter(conv => {
+          const convTags = conv.conversation_tags
+            .map((ct: any) => ct.tags)
+            .filter((tag: Tag | null): tag is Tag => tag !== null);
+          return selectedTags.every(tagId => 
+            convTags.some(tag => tag.id === tagId)
+          );
+        });
+
+        set({ 
+          conversations: filteredConversations.map(conv => ({
+            ...conv,
+            tags: conv.conversation_tags
+              .map((ct: any) => ct.tags)
+              .filter((tag: Tag | null): tag is Tag => tag !== null)
+          }))
+        });
+      } else {
+        const { data, error } = await query;
+        if (error) throw error;
+
+        set({
+          conversations: (data || []).map(conv => ({
+            ...conv,
+            tags: conv.conversation_tags
+              .map((ct: any) => ct.tags)
+              .filter((tag: Tag | null): tag is Tag => tag !== null)
+          }))
+        });
+      }
     } catch (error: any) {
       set({ error: error.message });
       toast.error('Failed to fetch conversations');
@@ -50,22 +104,27 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     }
   },
 
-  fetchMessages: async (conversationId: string) => {
-    set({ isLoading: true, error: null });
+  fetchConversationTags: async (conversationId: string) => {
     try {
       const { data, error } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('conversation_id', conversationId)
-        .order('created_at', { ascending: true });
+        .from('conversation_tags')
+        .select(`
+          tags (
+            id,
+            name,
+            color
+          )
+        `)
+        .eq('conversation_id', conversationId);
 
       if (error) throw error;
-      set({ messages: data || [] });
+
+      return data
+        ?.map(item => item.tags)
+        .filter((tag): tag is Tag => tag !== null) || [];
     } catch (error: any) {
-      set({ error: error.message });
-      toast.error('Failed to fetch messages');
-    } finally {
-      set({ isLoading: false });
+      console.error('Error fetching conversation tags:', error);
+      return [];
     }
   },
 
@@ -87,13 +146,45 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     }
   },
 
+  fetchMessages: async (conversationId: string) => {
+    set({ isLoading: true, error: null });
+    try {
+      const { data: messages, error: messagesError } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: true });
+
+      if (messagesError) throw messagesError;
+
+      const { data: conversation, error: conversationError } = await supabase
+        .from('conversations')
+        .select('*')
+        .eq('id', conversationId)
+        .single();
+
+      if (conversationError) throw conversationError;
+
+      const tags = await get().fetchConversationTags(conversationId);
+
+      set({ 
+        messages: messages || [],
+        currentConversation: conversation ? { ...conversation, tags } : null
+      });
+    } catch (error: any) {
+      set({ error: error.message });
+      toast.error('Failed to fetch messages');
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
   sendMessage: async (content: string, conversationId: string) => {
     set({ isLoading: true, error: null });
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not authenticated');
 
-      // Insert user message
       const { error: messageError } = await supabase
         .from('messages')
         .insert({
@@ -105,7 +196,6 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
 
       if (messageError) throw messageError;
 
-      // Update conversation last_message_at
       const { error: updateError } = await supabase
         .from('conversations')
         .update({ last_message_at: new Date().toISOString() })
@@ -113,7 +203,6 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
 
       if (updateError) throw updateError;
 
-      // Refresh messages
       await get().fetchMessages(conversationId);
     } catch (error: any) {
       set({ error: error.message });
@@ -179,7 +268,9 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         .insert({ conversation_id: conversationId, tag_id: tagId });
 
       if (error) throw error;
-      toast.success('Tag added successfully');
+      
+      await get().fetchMessages(conversationId);
+      await get().fetchConversations();
     } catch (error: any) {
       set({ error: error.message });
       toast.error('Failed to add tag');
@@ -198,10 +289,89 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         .eq('tag_id', tagId);
 
       if (error) throw error;
-      toast.success('Tag removed successfully');
+      
+      await get().fetchMessages(conversationId);
+      await get().fetchConversations();
     } catch (error: any) {
       set({ error: error.message });
       toast.error('Failed to remove tag');
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  createTag: async (name: string, color: string) => {
+    set({ isLoading: true, error: null });
+    try {
+      console.log('Attempting to create tag:', { name, color });
+
+      // Check if user is authenticated
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
+
+      // Create the tag
+      const { data, error } = await supabase
+        .from('tags')
+        .insert([{ name, color }])
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error creating tag:', error);
+        throw error;
+      }
+
+      console.log('Created tag:', data);
+
+      // Refresh the tags list
+      await get().fetchTags();
+      toast.success('Tag created successfully');
+    } catch (error: any) {
+      console.error('Create tag error:', error);
+      set({ error: error.message });
+      toast.error('Failed to create tag: ' + error.message);
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  deleteTag: async (id: string) => {
+    set({ isLoading: true, error: null });
+    try {
+      console.log('Attempting to delete tag:', id);
+
+      // First, let's check if the tag exists
+      const { data: tagCheck } = await supabase
+        .from('tags')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      console.log('Tag to delete:', tagCheck);
+
+      // Delete from tags table first
+      const { data: deleteResult, error: tagError } = await supabase
+        .from('tags')
+        .delete()
+        .eq('id', id)
+        .select();
+
+      if (tagError) {
+        console.error('Error deleting tag:', tagError);
+        throw tagError;
+      }
+
+      console.log('Delete result:', deleteResult);
+
+      // Refresh the tags list
+      await get().fetchTags();
+      await get().fetchConversations();
+      
+      toast.success('Tag deleted successfully');
+    } catch (error: any) {
+      console.error('Delete tag error:', error);
+      set({ error: error.message });
+      toast.error('Failed to delete tag: ' + error.message);
     } finally {
       set({ isLoading: false });
     }
