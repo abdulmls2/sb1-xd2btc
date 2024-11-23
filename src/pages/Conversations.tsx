@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Mail, Clock, ChevronDown, Star, Trash2, Eye, EyeOff, Tag as TagIcon, ArrowUpDown } from 'lucide-react';
+import { Check, Mail, Clock, ChevronDown, Star, Trash2, Eye, EyeOff, Tag as TagIcon, ArrowUpDown,  } from 'lucide-react';
 import ConversationList from '../components/conversations/ConversationList';
 import MessageList from '../components/conversations/MessageList';
 import MessageInput from '../components/conversations/MessageInput';
@@ -13,14 +13,20 @@ const initialFilters = [
   { icon: Mail, label: 'Unread', id: 'unread' },
   { icon: Mail, label: 'All', id: 'all' },
   { icon: Clock, label: 'Expired', id: 'expired' },
+  { icon: Star, label: 'Completed', id: 'completed' },
 ];
 
 export default function Conversations() {
   const [showTagManager, setShowTagManager] = useState(false);
   const [showSortMenu, setShowSortMenu] = useState(false);
-  const [activeFilter, setActiveFilter] = useState('unread');
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
-  const { updateConversation, currentConversation, setSortOrder } = useConversationStore();
+  const { 
+    updateConversation, 
+    currentConversation, 
+    setSortOrder, 
+    setActiveFilter,
+    activeFilter 
+  } = useConversationStore();
 
   // Refs for dropdown menus
   const tagManagerRef = useRef<HTMLDivElement>(null);
@@ -75,11 +81,11 @@ export default function Conversations() {
       {/* Left Panel */}
       <div className="w-96 border-r border-gray-200 flex flex-col">
         <div className="p-4 border-b border-gray-200">
-          <div className="flex gap-4 mb-4">
+          <div className="flex flex-wrap gap-2 mb-4">
             {initialFilters.map((filter) => (
               <button
                 key={filter.id}
-                onClick={() => setActiveFilter(filter.id)}
+                onClick={() => setActiveFilter(filter.id as 'unread' | 'all' | 'expired' | 'completed')}
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${
                   activeFilter === filter.id
                     ? 'bg-gray-900 text-white'
@@ -178,11 +184,11 @@ export default function Conversations() {
                   <button
                     onClick={handleStarToggle}
                     className={`p-2 rounded-lg hover:bg-gray-100 ${
-                      currentConversation?.is_starred ? 'text-yellow-500' : 'text-gray-400'
+                      currentConversation?.is_starred ? 'text-green-400' : 'text-red-500'
                     }`}
                     title={currentConversation?.is_starred ? 'Remove from favorites' : 'Add to favorites'}
                   >
-                    <Star className={`h-5 w-5 ${currentConversation?.is_starred ? 'fill-current' : ''}`} />
+                    <Check className={`h-5 w-5 ${currentConversation?.is_starred ? 'fill-current' : ''}`} />
                   </button>
                   <button
                     onClick={handleDeleteConversation}
