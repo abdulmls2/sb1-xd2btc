@@ -55,31 +55,35 @@ export default function TagManager() {
   
   <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto p-1">
     {tags.map((tag) => (
-      <button
+      <div
         key={tag.id}
-        onClick={() => handleTagToggle(tag.id)}
-        className={`group flex items-center gap-1.5 py-1 px-2 rounded-md hover:bg-blue-100 ${
+        className={`group flex items-center gap-1.5 py-1 px-2 rounded-md hover:bg-blue-100 cursor-pointer ${
           selectedTags.includes(tag.id) ? 'bg-blue-200' : 'bg-gray-100'
         }`}
       >
         <div
-          className="w-2.5 h-2.5 rounded-full"
-          style={{ backgroundColor: tag.color }}
-        />
-        <span className="text-sm text-gray-700">{tag.name}</span>
-        {selectedTags.includes(tag.id) && (
-          <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-        )}
-        <button
+          onClick={() => handleTagToggle(tag.id)}
+          className="flex items-center gap-1.5 flex-1"
+        >
+          <div
+            className="w-2.5 h-2.5 rounded-full"
+            style={{ backgroundColor: tag.color }}
+          />
+          <span className="text-sm text-gray-700">{tag.name}</span>
+          {selectedTags.includes(tag.id) && (
+            <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+          )}
+        </div>
+        <span
           onClick={(e) => {
             e.stopPropagation();
             handleDeleteTag(tag.id);
           }}
-          className="p-0.5 text-gray-400 hover:text-red-500 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+          className="p-0.5 text-gray-400 hover:text-red-500 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
         >
           <Trash2 className="h-3 w-3" />
-        </button>
-      </button>
+        </span>
+      </div>
     ))}
   </div>
 </div>
