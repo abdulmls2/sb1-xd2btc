@@ -28,6 +28,8 @@ interface ConversationStore {
   fetchConversationTags: (conversationId: string) => Promise<Tag[]>;
   createTag: (name: string, color: string) => Promise<void>;
   deleteTag: (id: string) => Promise<void>;
+  sortOrder: 'newest' | 'oldest';
+  setSortOrder: (order: 'newest' | 'oldest') => void;
 }
 
 export const useConversationStore = create<ConversationStore>((set, get) => ({
@@ -38,6 +40,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
   selectedTags: [],
   isLoading: false,
   error: null,
+  sortOrder: 'newest',
 
   setSelectedTags: (tags: string[]) => {
     set({ selectedTags: tags });
@@ -46,7 +49,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
   fetchConversations: async () => {
     set({ isLoading: true, error: null });
     try {
-      const { selectedTags } = get();
+      const { selectedTags, sortOrder } = get();
       let query = supabase
         .from('conversations')
         .select(`
@@ -60,7 +63,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
           )
         `)
         .eq('status', 'active')
-        .order('last_message_at', { ascending: false });
+        .order('last_message_at', { ascending: sortOrder === 'oldest' });
 
       if (selectedTags.length > 0) {
         const { data, error } = await query;
@@ -375,5 +378,10 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     } finally {
       set({ isLoading: false });
     }
+  },
+
+  setSortOrder: (order: 'newest' | 'oldest') => {
+    set({ sortOrder: order });
+    get().fetchConversations();
   },
 }));
