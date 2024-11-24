@@ -35,7 +35,7 @@ export default function ConversationList({ onSelectConversation, selectedId }: C
           <button
             key={conversation.id}
             onClick={() => onSelectConversation(conversation.id)}
-            className={`w-full flex items-start gap-3 p-4 hover:bg-gray-50 border-b border-gray-100 text-left transition-colors ${
+            className={`w-full flex items-start gap-3 p-4 hover:bg-gray-50 border-b border-gray-200 text-left transition-colors ${
               selectedId === conversation.id ? 'bg-gray-50' : ''
             }`}
           >
