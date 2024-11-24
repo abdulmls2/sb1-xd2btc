@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Check, Mail, Clock, ChevronDown, Star, Trash2, Eye, EyeOff, Tag as TagIcon, ArrowUpDown,  } from 'lucide-react';
+import {Hourglass, MessageCircleOff,Check, Mail, Clock, ChevronDown, Star, Trash2, Eye, EyeOff, Tag as TagIcon, ArrowUpDown,  } from 'lucide-react';
 import ConversationList from '../components/conversations/ConversationList';
 import MessageList from '../components/conversations/MessageList';
 import MessageInput from '../components/conversations/MessageInput';
@@ -10,10 +10,34 @@ import { toast } from 'react-hot-toast';
 import TagManager from '../components/conversations/TagManager';
 
 const initialFilters = [
-  { icon: Mail, label: 'Unread', id: 'unread' },
-  { icon: Mail, label: 'All', id: 'all' },
-  { icon: Clock, label: 'Expired', id: 'expired' },
-  { icon: Star, label: 'Completed', id: 'completed' },
+  { 
+    icon: Mail, 
+    label: 'Active', 
+    id: 'active', 
+    activeColor: 'bg-green-600 text-white hover:bg-green-700',
+    inactiveColor: 'bg-green-200 text-green-800 hover:bg-green-200'
+  },
+  { 
+    icon: Clock, 
+    label: 'Urgent', 
+    id: 'urgent', 
+    activeColor: 'bg-red-600 text-white hover:bg-red-700',
+    inactiveColor: 'bg-red-200 text-red-800 hover:bg-red-200'
+  },
+  { 
+    icon: MessageCircleOff, 
+    label: 'Closed', 
+    id: 'closed', 
+    activeColor: 'bg-gray-900 text-white hover:bg-gray-800',
+    inactiveColor: 'bg-gray-200 text-gray-800 hover:bg-gray-300'
+  },
+  { 
+    icon: Mail, 
+    label: 'All', 
+    id: 'all', 
+    activeColor: 'bg-blue-600 text-white hover:bg-blue-700',
+    inactiveColor: 'bg-blue-200 text-blue-800 hover:bg-blue-200'
+  },
 ];
 
 export default function Conversations() {
@@ -59,7 +83,6 @@ export default function Conversations() {
       await updateConversation(selectedConversationId, { 
         is_read: !currentConversation.is_read 
       });
-      toast.success(`Conversation marked as ${currentConversation.is_read ? 'unread' : 'read'}`);
     } catch (error) {
       toast.error('Failed to update conversation');
     }
@@ -81,16 +104,25 @@ export default function Conversations() {
       {/* Left Panel */}
       <div className="w-96 border-r border-gray-200 flex flex-col">
         <div className="p-4 border-b border-gray-200">
-          <div className="flex flex-wrap gap-2 mb-4">
+          <div className="flex flex-wrap gap-2 mb-4 items-center justify-start">
             {initialFilters.map((filter) => (
               <button
                 key={filter.id}
-                onClick={() => setActiveFilter(filter.id as 'unread' | 'all' | 'expired' | 'completed')}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${
-                  activeFilter === filter.id
-                    ? 'bg-gray-900 text-white'
-                    : 'text-gray-600 hover:bg-gray-50'
-                }`}
+                onClick={() => setActiveFilter(filter.id as 'active' | 'all' | 'urgent' | 'closed')}
+                className={`
+                  flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium 
+                  transition-all duration-200 border-2
+                  ${
+                    activeFilter === filter.id 
+                      ? filter.activeColor 
+                      : filter.inactiveColor
+                  }
+                  ${
+                    activeFilter === filter.id 
+                      ? 'scale-105 transform' 
+                      : 'opacity-90'
+                  }
+                `}
               >
                 <filter.icon className="h-4 w-4" />
                 {filter.label}
