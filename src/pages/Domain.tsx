@@ -1,4 +1,3 @@
-{/* Previous imports remain the same */}
 import React, { useState, useEffect, useRef } from 'react';
 import { Copy, Check, Code2, Globe, Save } from 'lucide-react';
 import { HexColorPicker } from 'react-colorful';
@@ -6,6 +5,15 @@ import { toast } from 'react-hot-toast';
 import { useDomain } from '../context/DomainContext';
 import ChatbotPreview from '../components/ChatbotPreview';
 import { supabase } from '../lib/supabase';
+import type { FAQ } from '../types/faq';
+
+interface DomainSettings {
+  chatbot_name: string;
+  greeting_message: string;
+  color: string;
+  header_text_color: string;
+  primary_color: string;
+}
 
 export default function Domain() {
   const { currentDomain, updateDomainName } = useDomain();
@@ -16,23 +24,19 @@ export default function Domain() {
   const [greetingMessage, setGreetingMessage] = useState('👋 Hi there! How can I help you today?');
   const [domainName, setDomainName] = useState(currentDomain?.name || '');
   const [isEditing, setIsEditing] = useState(false);
-  const [qaList, setQaList] = useState([
-    { id: 1, question: "What are your business hours?", answer: "We're open Monday to Friday, 9 AM to 5 PM." },
-    { id: 2, question: "How can I contact support?", answer: "You can reach us at support@example.com" }
-  ]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [trainingData, setTrainingData] = useState([
-    { id: 1, content: "The company was founded in 2020 and specializes in AI solutions.", type: "context" },
-    { id: 2, content: "Our product pricing starts at $99/month for the basic plan.", type: "context" }
-  ]);
+
+  const [trainingData, setTrainingData] = useState([]);
   const [newTrainingData, setNewTrainingData] = useState('');
   const [trainingSearchQuery, setTrainingSearchQuery] = useState('');
   const [editingTrainingId, setEditingTrainingId] = useState<number | null>(null);
+
+  const [qaList, setQaList] = useState<FAQ[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [newQuestion, setNewQuestion] = useState('');
   const [newAnswer, setNewAnswer] = useState('');
   const [headerTextColor, setHeaderTextColor] = useState('#000000');
   const [showHeaderColorPicker, setShowHeaderColorPicker] = useState(false);
+  const [primaryColor, setPrimaryColor] = useState('#FF6B00');
 
   const colorPickerRef = useRef<HTMLDivElement>(null);
   const headerColorPickerRef = useRef<HTMLDivElement>(null);
@@ -41,33 +45,56 @@ export default function Domain() {
     setDomainName(currentDomain?.name || '');
   }, [currentDomain?.name]);
 
-  // Fetch chatbot settings when domain changes
   useEffect(() => {
-    const fetchChatbotSettings = async () => {
+    const fetchFAQs = async () => {
+      if (!currentDomain?.id) return;
+
+      try {
+        const { data, error } = await supabase
+          .from('faqs')
+          .select('*')
+          .eq('domain_id', currentDomain.id)
+          .order('created_at', { ascending: true });
+
+        if (error) throw error;
+        setQaList(data || []);
+      } catch (error) {
+        console.error('Error fetching FAQs:', error);
+        toast.error('Failed to load FAQs');
+      }
+    };
+
+    fetchFAQs();
+  }, [currentDomain?.id]);
+
+  useEffect(() => {
+    const fetchSettings = async () => {
       if (!currentDomain?.id) return;
 
       try {
         const { data, error } = await supabase
           .from('domain_settings')
-          .select('chatbot_name, greeting_message,  primary_color, header_text_color')
+          .select('*')
           .eq('domain_id', currentDomain.id)
           .single();
 
-        if (error) throw error;
+        if (error && error.code !== 'PGRST116') throw error;
 
         if (data) {
-          setChatbotName(data.chatbot_name || 'Friendly Assistant');
-          setGreetingMessage(data.greeting_message || '👋 Hi there! How can I help you today?');
-          setColor(data.primary_color || '#FF6B00');
-          setHeaderTextColor(data.header_text_color || '#000000');
+          const settings = data as DomainSettings;
+          setChatbotName(settings.chatbot_name || 'Friendly Assistant');
+          setGreetingMessage(settings.greeting_message || '👋 Hi there! How can I help you today?');
+          setColor(settings.primary_color || '#FF6B00');
+          setHeaderTextColor(settings.header_text_color || '#000000');
+          setPrimaryColor(settings.primary_color || '#FF6B00');
         }
       } catch (error) {
-        console.error('Error fetching chatbot settings:', error);
-        toast.error('Failed to load chatbot settings');
+        console.error('Error fetching settings:', error);
+        toast.error('Failed to load settings');
       }
     };
 
-    fetchChatbotSettings();
+    fetchSettings();
   }, [currentDomain?.id]);
 
   useEffect(() => {
@@ -116,6 +143,52 @@ export default function Domain() {
     toast.success('Domain name updated successfully');
   };
 
+  const handleAddQA = async () => {
+    if (!newQuestion.trim() || !newAnswer.trim() || !currentDomain?.id) {
+      toast.error('Both question and answer are required');
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('faqs')
+        .insert({
+          question: newQuestion.trim(),
+          answer: newAnswer.trim(),
+          domain_id: currentDomain.id
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setQaList([...qaList, data]);
+      setNewQuestion('');
+      setNewAnswer('');
+      toast.success('FAQ added successfully');
+    } catch (error) {
+      console.error('Error adding FAQ:', error);
+      toast.error('Failed to add FAQ');
+    }
+  };
+
+  const handleDeleteQA = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('faqs')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      setQaList(qaList.filter(qa => qa.id !== id));
+      toast.success('FAQ deleted successfully');
+    } catch (error) {
+      console.error('Error deleting FAQ:', error);
+      toast.error('Failed to delete FAQ');
+    }
+  };
+
   const handleSaveAll = async () => {
     if (!currentDomain?.id) {
       toast.error('No domain selected');
@@ -134,7 +207,6 @@ export default function Domain() {
     }
 
     try {
-      // Update domain settings
       const { error: settingsError } = await supabase
         .from('domain_settings')
         .upsert({
@@ -156,31 +228,6 @@ export default function Domain() {
     }
   };
 
-  // Rest of the component remains the same...
-  const handleAddQA = () => {
-    if (!newQuestion.trim() || !newAnswer.trim()) {
-      toast.error('Both question and answer are required');
-      return;
-    }
-
-    setQaList([
-      ...qaList,
-      {
-        id: Date.now(),
-        question: newQuestion.trim(),
-        answer: newAnswer.trim()
-      }
-    ]);
-    setNewQuestion('');
-    setNewAnswer('');
-    toast.success('FAQ added successfully');
-  };
-
-  const handleDeleteQA = (id: number) => {
-    setQaList(qaList.filter(qa => qa.id !== id));
-    toast.success('FAQ deleted successfully');
-  };
-
   const filteredQA = qaList.filter(qa => 
     qa.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
     qa.answer.toLowerCase().includes(searchQuery.toLowerCase())
@@ -190,8 +237,75 @@ export default function Domain() {
     data.content.toLowerCase().includes(trainingSearchQuery.toLowerCase())
   );
 
+  const handleAddTrainingData = async () => {
+    if (!newTrainingData.trim() || !currentDomain?.id) {
+      toast.error('Training data cannot be empty');
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('training_data')
+        .insert({
+          content: newTrainingData.trim(),
+          domain_id: currentDomain.id
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setTrainingData([...trainingData, { id: Date.now(), content: newTrainingData.trim(), type: 'context' }]);
+      setNewTrainingData('');
+      toast.success('Training data added successfully');
+    } catch (error) {
+      console.error('Error adding training data:', error);
+      toast.error('Failed to add training data');
+    }
+  };
+
+  useEffect(() => {
+    const fetchTrainingData = async () => {
+      if (!currentDomain?.id) return;
+
+      try {
+        const { data, error } = await supabase
+          .from('training_data')
+          .select('*')
+          .eq('domain_id', currentDomain.id);
+
+        if (error) throw error;
+
+        setTrainingData(data || []);
+      } catch (error) {
+        console.error('Error fetching training data:', error);
+        toast.error('Failed to load training data');
+      }
+    };
+
+    fetchTrainingData();
+  }, [currentDomain?.id]);
+
+  const handleDeleteTrainingData = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('training_data')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      setTrainingData(trainingData.filter(item => item.id !== id));
+      toast.success('Training data removed successfully');
+    } catch (error) {
+      console.error('Error deleting training data:', error);
+      toast.error('Failed to delete training data');
+    }
+  };
+
   return (
     <div className="p-6 max-w-4xl mx-auto">
+      {/* Rest of the JSX remains exactly the same as in the previous version */}
       <div className="mb-8">
         <h1 className="text-2xl font-bold mb-2">Domain Settings</h1>
         <p className="text-gray-600">
@@ -464,8 +578,20 @@ export default function Domain() {
           </div>
         </section>
 
-        {/* Bot Training Section */}
-        <section>
+        {/* Save Button */}
+        <div className="flex justify-end pt-4">
+          <button 
+            onClick={handleSaveAll}
+            className="bg-orange-500 text-white px-6 py-2 rounded-lg hover:bg-orange-600 transition-colors flex items-center gap-2"
+          >
+            <Save className="h-4 w-4" />
+            Save All Changes
+          </button>
+        </div>
+      </div>
+
+       {/* Bot Training Section */}
+       <section>
           <h2 className="text-xl font-semibold mb-4">Bot Training</h2>
           <div className="grid grid-cols-2 gap-6">
             {/* Left side - Input Form */}
@@ -491,17 +617,7 @@ export default function Domain() {
 
                 <div className="flex justify-end">
                   <button
-                    onClick={() => {
-                      if (newTrainingData.trim()) {
-                        setTrainingData([...trainingData, {
-                          id: Date.now(),
-                          content: newTrainingData.trim(),
-                          type: 'context'
-                        }]);
-                        setNewTrainingData('');
-                        toast.success('Training data added successfully');
-                      }
-                    }}
+                    onClick={handleAddTrainingData}
                     className="bg-orange-500 text-white px-6 py-2 rounded-lg hover:bg-orange-600 transition-colors"
                   >
                     Add Training Data
@@ -523,19 +639,18 @@ export default function Domain() {
               </div>
 
               <div className="space-y-4 max-h-[400px] overflow-y-auto">
-                {filteredTrainingData.map((data) => (
+                {trainingData.filter(data => 
+                  data.content.toLowerCase().includes(trainingSearchQuery.toLowerCase())
+                ).map((data) => (
                   <div key={data.id} className="border rounded-lg p-4 hover:border-orange-200 transition-colors">
                     <div className="flex justify-between items-start mb-2">
                       <div className="flex items-center gap-2">
                         <span className="px-2 py-1 bg-gray-100 rounded-md text-xs text-gray-600">
-                          {data.type}
+                          Context
                         </span>
                       </div>
                       <button
-                        onClick={() => {
-                          setTrainingData(trainingData.filter(item => item.id !== data.id));
-                          toast.success('Training data removed');
-                        }}
+                        onClick={() => handleDeleteTrainingData(data.id)}
                         className="text-gray-400 hover:text-red-500"
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
@@ -561,7 +676,9 @@ export default function Domain() {
             Save All Changes
           </button>
         </div>
-      </div>
+      
+
+      
 
       {/* Chatbot Preview */}
       <ChatbotPreview
