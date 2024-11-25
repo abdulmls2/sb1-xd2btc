@@ -49,7 +49,7 @@ export default function Domain() {
       try {
         const { data, error } = await supabase
           .from('domain_settings')
-          .select('chatbot_name')
+          .select('chatbot_name, greeting_message,  primary_color, header_text_color')
           .eq('domain_id', currentDomain.id)
           .single();
 
@@ -57,6 +57,9 @@ export default function Domain() {
 
         if (data) {
           setChatbotName(data.chatbot_name || 'Friendly Assistant');
+          setGreetingMessage(data.greeting_message || '👋 Hi there! How can I help you today?');
+          setColor(data.primary_color || '#FF6B00');
+          setHeaderTextColor(data.header_text_color || '#000000');
         }
       } catch (error) {
         console.error('Error fetching chatbot settings:', error);
