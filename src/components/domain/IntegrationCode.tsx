@@ -4,7 +4,7 @@ import { Code2, Copy, Check } from 'lucide-react';
 interface IntegrationCodeProps {
   integrationCode: string;
   copied: boolean;
-  handleCopyCode: () => void;
+  handleCopyCode: () => Promise<void>;
 }
 
 export default function IntegrationCode({
@@ -16,7 +16,10 @@ export default function IntegrationCode({
     <div className="p-6">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold">Integration Code</h3>
-        <Code2 className="h-5 w-5 text-gray-500" />
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-500">Test Page: <a href="/test-site.html" target="_blank" rel="noopener noreferrer" className="text-orange-500 hover:text-orange-600">Open</a></span>
+          <Code2 className="h-5 w-5 text-gray-500" />
+        </div>
       </div>
       <div className="bg-gray-50 p-4 rounded-lg font-mono text-sm relative">
         <pre className="overflow-x-auto">{integrationCode}</pre>
