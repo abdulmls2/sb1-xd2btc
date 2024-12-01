@@ -117,7 +117,12 @@ export default function Domain() {
     };
   }, []);
 
-  const integrationCode = `<script src="https://chatbot.corinna.ai/widget/${currentDomain?.name}"></script>`;
+  const integrationCode = `<script>
+  window.CHATBOT_CONFIG = {
+    domainId: "${currentDomain?.id || ''}",
+  };
+</script>
+<script src="http://localhost:5173/chatbot-widget.umd.js"></script>`;
 
   const handleCopyCode = async () => {
     try {
