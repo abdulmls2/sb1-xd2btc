@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "widget:build": "vite build --config vite.widget.config.ts",
+    "widget:preview": "vite preview --port 5173",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
