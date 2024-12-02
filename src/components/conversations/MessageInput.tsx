@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Send } from 'lucide-react';
 import { useConversationStore } from '../../lib/store/conversationStore';
+import { supabase } from '../../lib/supabase';
 import { toast } from 'react-hot-toast';
 
 interface MessageInputProps {
