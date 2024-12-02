@@ -212,7 +212,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         .insert({
           conversation_id: conversationId,
           content,
-          sender_type: 'user',
+          sender_type: 'bot',
           user_id: user.id
         });
 
