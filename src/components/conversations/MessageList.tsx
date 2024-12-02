@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { useConversationStore } from '../../lib/store/conversationStore';
 import { format } from 'date-fns';
 import { supabase } from '../../lib/supabase';
+import { useAuthStore } from '../../store/authStore';
 
 interface MessageListProps {
   conversationId: string;
@@ -9,6 +10,7 @@ interface MessageListProps {
 
 export default function MessageList({ conversationId }: MessageListProps) {
   const { messages, fetchMessages, isLoading } = useConversationStore();
+  const { user } = useAuthStore();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -16,7 +18,7 @@ export default function MessageList({ conversationId }: MessageListProps) {
 
     // Set up real-time subscription
     const channel = supabase
-      .channel(`messages:${conversationId}`)
+      .channel(`messages-${conversationId}`)
       .on(
         'postgres_changes',
         {
@@ -53,14 +55,14 @@ export default function MessageList({ conversationId }: MessageListProps) {
       <div className="space-y-4">
         {messages.map((message) => (
           <div
-            key={message.id}
-            className={`flex ${message.sender_type === 'user' ? 'justify-end' : 'justify-start'}`}
+            key={`${message.id}-${message.created_at}`}
+            className={`flex ${message.sender_type === 'user' ? 'justify-start' : 'justify-end'}`}
           >
             <div
               className={`max-w-[70%] rounded-lg p-4 ${
                 message.sender_type === 'user'
-                  ? 'bg-gray-900 text-white'
-                  : 'bg-gray-100 text-gray-800'
+                  ? 'bg-gray-100 text-gray-800'
+                  : 'bg-gray-900 text-white'
               }`}
             >
               <p className="text-sm">{message.content}</p>
