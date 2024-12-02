@@ -9,10 +9,6 @@ export default defineConfig({
     'process.env.VITE_SUPABASE_URL': JSON.stringify(process.env.VITE_SUPABASE_URL),
     'process.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(process.env.VITE_SUPABASE_ANON_KEY)
   },
-  server: {
-    port: 5173,
-    strictPort: true
-  },
   build: {
     lib: {
       entry: 'src/widget/main.tsx',
@@ -23,7 +19,6 @@ export default defineConfig({
     rollupOptions: {
       external: ['react', 'react-dom'],
       output: {
-        format: 'umd',
         globals: {
           react: 'React',
           'react-dom': 'ReactDOM'
