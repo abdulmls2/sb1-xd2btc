@@ -2,10 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Send, Paperclip, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { format } from 'date-fns';
-import { debounce } from 'lodash';
+import TypingIndicator from '../components/chat/TypingIndicator';
+import { v4 as uuidv4 } from 'uuid';
 
 const SESSION_KEY = 'chatbot_session_id';
 const CONVERSATION_EXPIRY_DAYS = 180; // 6 months default expiry
+const MESSAGE_SOUND_URL = 'https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3';
 
 interface ChatbotConfig {
   chatbotName: string;
@@ -21,6 +23,13 @@ interface Message {
   created_at: string;
 }
 
+interface TypingStatus {
+  user_id: string;
+  username: string;
+  typing: boolean;
+  is_bot: boolean;
+}
+
 export default function ChatbotWidget({ domainId }: { domainId: string }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [message, setMessage] = useState('');
@@ -29,47 +38,95 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [typingUsers, setTypingUsers] = useState<TypingStatus[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const notificationSound = useRef<HTMLAudioElement | null>(null);
+  const typingTimeoutRef = useRef<NodeJS.Timeout>();
+  const [channel, setChannel] = useState<ReturnType<typeof supabase.channel> | null>(null);
+  const [config, setConfig] = useState<ChatbotConfig>({
+    chatbotName: 'Chatbot',
+    greetingMessage: 'Hello! How can I help you today?',
+    color: '#FF6B00', 
+    headerTextColor: '#000000'
+  });
 
-  // Initialize notification sound
+  // Initialize typing channel
   useEffect(() => {
-    const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3');
-    audio.preload = 'auto'; // Preload the audio
-    audio.load(); // Start loading the audio file
-    notificationSound.current = audio;
+    if (!conversationId) return;
+    
+    const typingChannel = supabase.channel(`typing:${conversationId}`, {
+      config: {
+        broadcast: { self: true }
+      }
+    });
 
-    // Test sound on first interaction
-    const handleFirstInteraction = () => {
-      audio.play().catch(() => {}); // Play and immediately pause to enable audio
-      audio.currentTime = 0;
-      audio.pause();
-      document.removeEventListener('click', handleFirstInteraction);
-    };
-    document.addEventListener('click', handleFirstInteraction);
+    typingChannel
+      .on('broadcast', { event: 'typing' }, ({ payload }) => {
+        const typingStatus = payload as TypingStatus;
+        setTypingUsers(prev => {
+          const filtered = prev.filter(u => u.user_id !== typingStatus.user_id || u.is_bot !== typingStatus.is_bot);
+          return typingStatus.typing ? [...filtered, typingStatus] : filtered;
+        });
+      })
+      .subscribe();
+
+    setChannel(typingChannel);
 
     return () => {
-      document.removeEventListener('click', handleFirstInteraction);
-      audio.pause();
-      audio.src = '';
+      typingChannel.unsubscribe();
     };
-  }, []);
 
-  const playNotificationSound = () => {
-    if (notificationSound.current) {
-      notificationSound.current.currentTime = 0;
-      const playPromise = notificationSound.current.play();
-      if (playPromise) {
-        playPromise.catch((error) => {
-          console.log('Error playing notification:', error);
-        });
-      }
+  }, [conversationId]);
+
+  const handleTyping = async () => {
+    if (!channel || !currentUserId) return;
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
     }
+
+    await channel.send({
+      type: 'broadcast',
+      event: 'typing',
+      payload: {
+        user_id: currentUserId,
+        username: 'User',
+        typing: true,
+        is_bot: false
+      }
+    });
+
+    typingTimeoutRef.current = setTimeout(async () => {
+      await channel.send({
+        type: 'broadcast',
+        event: 'typing',
+        payload: {
+          user_id: currentUserId,
+          username: 'User',
+          typing: false,
+          is_bot: false
+        }
+      });
+    }, 2000);
   };
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Initialize notification sound
+  useEffect(() => {
+    notificationSound.current = new Audio(MESSAGE_SOUND_URL);
+  }, []);
+
+  // Play sound for new messages
+  const playMessageSound = () => {
+    if (notificationSound.current) {
+      notificationSound.current.currentTime = 0;
+      notificationSound.current.play().catch(err => console.log('Error playing sound:', err));
+    }
+  };
 
   // Add real-time subscription for messages
   useEffect(() => {
@@ -80,7 +137,7 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
 
     console.log('Setting up subscription for conversation:', conversationId);
 
-    const channel = supabase.channel('messages')
+    const channel = supabase.channel(`messages-${conversationId}`)
       .on(
         'postgres_changes',
         {
@@ -96,16 +153,16 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
             const newMessage = payload.new as Message;
             console.log('New message:', newMessage);
             
+            // Play sound for new messages (only for bot messages or when chat is not focused)
+            if (newMessage.sender_type === 'bot' || document.hidden) {
+              playMessageSound();
+            }
+            
             setMessages(prevMessages => {
               // Check if message already exists
               if (prevMessages.some(msg => msg.id === newMessage.id)) {
                 console.log('Message already exists, skipping');
                 return prevMessages;
-              }
-              
-              // Play sound for new messages from bot
-              if (newMessage.sender_type === 'bot') {
-                playNotificationSound();
               }
               
               console.log('Adding new message to state');
@@ -150,6 +207,16 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
     };
 
     initializeSession();
+  }, []);
+
+  useEffect(() => {
+    const initializeUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setCurrentUserId(user.id);
+      }
+    };
+    initializeUser();
   }, []);
 
   const loadExistingConversation = async (currentSessionId: string) => {
@@ -231,7 +298,7 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
     }
   };
 
-  const debouncedSendMessage = debounce(async (content: string) => {
+  const sendMessage = async (content: string) => {
     try {
       setIsLoading(true);
       setError(null);
@@ -242,15 +309,12 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
         const { data: { user: anonUser } } = await supabase.auth.getUser();
         if (!anonUser) throw new Error('Failed to create anonymous session');
       }
-
+      
       // Create a new conversation if one doesn't exist
       const currentConversationId = conversationId || await createConversation();
       if (!conversationId) {
         setConversationId(currentConversationId);
       }
-
-      // Add a timestamp to ensure uniqueness
-      const timestamp = new Date().toISOString();
 
       // Insert the message
       const { data: messageData, error: messageError } = await supabase
@@ -260,7 +324,7 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
           user_id: user.id,
           content,
           sender_type: 'user',
-          created_at: timestamp
+          created_at: new Date().toISOString()
         })
         .select()
         .single();
@@ -270,10 +334,10 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
       // Update conversation last_message_at
       await supabase
         .from('conversations')
-        .update({ last_message_at: timestamp })
+        .update({ last_message_at: new Date().toISOString() })
         .eq('id', currentConversationId);
 
-      // Clear the input
+      // Remove local state update since it will come through the subscription
       setMessage('');
     } catch (error) {
       console.error('Error sending message:', error);
@@ -281,12 +345,12 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
     } finally {
       setIsLoading(false);
     }
-  }, 500);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!message.trim() || isLoading) return;
-    await debouncedSendMessage(message.trim());
+    await sendMessage(message.trim());
   };
 
   useEffect(() => {
@@ -317,12 +381,90 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
     }
   }, [domainId]);
 
-  const [config, setConfig] = useState<ChatbotConfig>({
-    chatbotName: 'Chatbot',
-    greetingMessage: 'Hello! How can I help you today?',
-    color: '#FF6B00', 
-    headerTextColor: '#000000'
-  });
+  // Add real-time subscription for typing indicators
+  useEffect(() => {
+    if (!conversationId) return;
+
+    console.log('Setting up typing channel for conversation:', conversationId);
+    
+    // Create a single channel instance for typing
+    const channel = supabase.channel(`typing:${conversationId}`, {
+      config: {
+        broadcast: { self: true }  // Allow receiving our own broadcasts
+      }
+    });
+
+    // Set up typing status listener
+    channel
+      .on(
+        'broadcast',
+        { event: 'typing' },
+        ({ payload }) => {
+          console.log('Received typing status:', payload);
+          const typingStatus = payload as TypingStatus;
+          setTypingUsers(prev => {
+            const filtered = prev.filter(u => u.user_id !== typingStatus.user_id);
+            if (typingStatus.typing) {
+              return [...filtered, typingStatus];
+            }
+            return filtered;
+          });
+        }
+      )
+      .subscribe(status => {
+        console.log(`Typing channel status: ${status}`);
+      });
+
+    // Store channel reference
+    const channelRef = channel;
+
+    // Handle user typing
+    const handleTypingRef = async () => {
+      if (!conversationId) return;
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Clear existing timeout
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+
+      // Send typing status
+      await channelRef.send({
+        type: 'broadcast',
+        event: 'typing',
+        payload: {
+          user_id: user.id,
+          username: 'User',
+          typing: true,
+          is_bot: false
+        }
+      });
+
+      // Set timeout to clear typing status
+      typingTimeoutRef.current = setTimeout(async () => {
+        await channelRef.send({
+          type: 'broadcast',
+          event: 'typing',
+          payload: {
+            user_id: user.id,
+            username: 'User',
+            typing: false,
+            is_bot: false
+          }
+        });
+      }, 2000);
+    };
+
+    // Update handleTyping reference
+    handleTypingRef.current = handleTypingRef;
+
+    return () => {
+      console.log('Cleaning up typing channel');
+      channel.unsubscribe();
+    };
+  }, [conversationId]);
 
   const buttonStyle = {
     backgroundColor: config.color,
@@ -394,6 +536,33 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
                   )}
                 </div>
               ))}
+              
+              {/* Typing Indicators */}
+              {typingUsers
+                .filter(typingUser => typingUser.user_id !== currentUserId) // Only show typing indicators for other users
+                .map((typingUser) => (
+                  <div 
+                    key={`${typingUser.user_id}-${typingUser.is_bot ? 'bot' : 'user'}-${Date.now()}`}
+                    className={`flex gap-2 ${!typingUser.is_bot ? 'justify-end' : ''}`}
+                  >
+                    {typingUser.is_bot && (
+                      <div className="w-8 h-8 rounded-full bg-gray-100 flex-shrink-0 flex items-center justify-center">
+                        🤖
+                      </div>
+                    )}
+                    <TypingIndicator 
+                      isBot={typingUser.is_bot} 
+                      className={typingUser.is_bot ? '' : 'ml-auto'}
+                    />
+
+                    {/* User Avatar - Show only for user typing */}
+                    {!typingUser.is_bot && (
+                      <div className="w-8 h-8 rounded-full bg-orange-100 flex-shrink-0 flex items-center justify-center">
+                        👤
+                      </div>
+                    )}
+                  </div>
+                ))}
               <div ref={messagesEndRef} />
             </div>
           </div>
@@ -405,11 +574,15 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
                 <input
                   type="text"
                   value={message}
-                  onChange={(e) => setMessage(e.target.value)}
+                  onChange={(e) => {
+                    setMessage(e.target.value);
+                    handleTyping();
+                  }}
                   placeholder="Type your message..."
                   className="w-full px-4 py-2 border rounded-full focus:outline-none focus:ring-2 pr-10 disabled:opacity-50 disabled:cursor-not-allowed"
                   style={{ '--tw-ring-color': config.color } as React.CSSProperties}
-                  disabled={isLoading} />
+                  disabled={isLoading}
+                />
               </div>
               <button 
                 type="submit"
