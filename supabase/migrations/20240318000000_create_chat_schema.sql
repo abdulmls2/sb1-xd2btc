@@ -13,7 +13,6 @@ ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 -- Create conversations table
 CREATE TABLE public.conversations (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    session_id TEXT,
     created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT now() NOT NULL,
     title TEXT,
@@ -27,7 +26,6 @@ CREATE TABLE public.conversations (
 -- Create messages table
 CREATE TABLE public.messages (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    session_id TEXT,
     created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
     conversation_id UUID REFERENCES public.conversations(id) ON DELETE CASCADE NOT NULL,
     content TEXT NOT NULL,
