@@ -7,7 +7,4 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['lucide-react'],
   },
-  server: {
-    cors: true, // Enable Cross-Origin Resource Sharing
-},
 });
