@@ -1,57 +1,22 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useConversationStore } from '../../lib/store/conversationStore';
 import { format } from 'date-fns';
 import { supabase } from '../../lib/supabase';
-import TypingIndicator from '../chat/TypingIndicator';
-import { useAuthStore } from '../../store/authStore';
-import { v4 as uuidv4 } from 'uuid';
 
 interface MessageListProps {
   conversationId: string;
 }
 
-interface TypingStatus {
-  user_id: string;
-  username: string;
-  typing: boolean;
-  is_bot: boolean;
-}
-
 export default function MessageList({ conversationId }: MessageListProps) {
   const { messages, fetchMessages, isLoading } = useConversationStore();
-  const { user } = useAuthStore();
-  const [typingUsers, setTypingUsers] = useState<TypingStatus[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  // Add real-time subscription for typing indicators
-  useEffect(() => {
-    const channel = supabase.channel(`typing:${conversationId}`)
-      .on(
-        'broadcast',
-        { event: 'typing' },
-        ({ payload }) => {
-          const typingStatus = payload as TypingStatus;
-          setTypingUsers(prev => {
-            // Remove existing status for this user
-            const filtered = prev.filter(u => u.user_id !== typingStatus.user_id);
-            // Add new status if user is typing
-            return typingStatus.typing ? [...filtered, typingStatus] : filtered;
-          });
-        }
-      )
-      .subscribe();
-
-    return () => {
-      channel.unsubscribe();
-    };
-  }, [conversationId]);
 
   useEffect(() => {
     fetchMessages(conversationId);
 
     // Set up real-time subscription
     const channel = supabase
-      .channel(`messages-${conversationId}`)
+      .channel(`messages:${conversationId}`)
       .on(
         'postgres_changes',
         {
@@ -105,18 +70,6 @@ export default function MessageList({ conversationId }: MessageListProps) {
             </div>
           </div>
         ))}
-        
-        {/* Typing Indicators */}
-        {typingUsers
-          .filter(typingUser => typingUser.user_id !== user?.id)
-          .map((typingUser, index) => (
-            <div 
-              key={`typing-${typingUser.user_id}-${uuidv4()}`}
-              className={`flex ${!typingUser.is_bot ? 'justify-start' : 'justify-end'}`}
-            >
-              <TypingIndicator isBot={typingUser.is_bot} />
-            </div>
-          ))}
         <div ref={messagesEndRef} />
       </div>
     </div>
