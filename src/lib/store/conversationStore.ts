@@ -51,7 +51,38 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     set({ currentDomainId: domainId });
     if (domainId) {
       get().fetchConversations();
-      get().fetchTags(); // Fetch tags when domain changes
+      get().fetchTags();
+      
+      // Set up real-time subscription for new conversations
+      const channel = supabase
+        .channel('new-conversations')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'conversations',
+            filter: `domain_id=eq.${domainId}`,
+          },
+          async (payload) => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return;
+
+            // Only process new conversations for the current user
+            if (payload.new && payload.new.user_id === user.id) {
+              const newConversation = payload.new as Conversation;
+              set((state) => ({
+                conversations: [newConversation, ...state.conversations]
+              }));
+            }
+          }
+        )
+        .subscribe();
+
+      // Clean up subscription when domain changes
+      return () => {
+        channel.unsubscribe();
+      };
     }
   },
 
