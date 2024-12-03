@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import {Hourglass, MessageCircleOff,Check, Mail, Clock, ChevronDown, Star, Trash2, Eye, EyeOff, Tag as TagIcon, ArrowUpDown,  } from 'lucide-react';
+import {Hourglass, MessageCircleOff,Check, Mail, Clock, ChevronDown, Star, Trash2, Eye, EyeOff, Tag as TagIcon, ArrowUpDown, Archive } from 'lucide-react';
 import ConversationList from '../components/conversations/ConversationList';
 import MessageList from '../components/conversations/MessageList';
 import MessageInput from '../components/conversations/MessageInput';
@@ -91,9 +91,14 @@ export default function Conversations() {
   const handleStarToggle = async () => {
     if (!selectedConversationId || !currentConversation) return;
     try {
+      // Explicitly handle the status toggle
+      const currentStatus = currentConversation.status || 'active'; // default to 'active' if undefined
+      const newStatus = currentStatus === 'archived' ? 'active' : 'archived';
+      
       await updateConversation(selectedConversationId, { 
-        is_starred: !currentConversation.is_starred 
+        status: newStatus
       });
+      toast.success(newStatus === 'archived' ? 'Conversation archived' : 'Conversation restored');
     } catch (error) {
       toast.error('Failed to update conversation');
     }
@@ -215,12 +220,14 @@ export default function Conversations() {
                   </button>
                   <button
                     onClick={handleStarToggle}
-                    className={`p-2 rounded-lg hover:bg-gray-100 ${
-                      currentConversation?.is_starred ? 'text-green-400' : 'text-red-500'
-                    }`}
-                    title={currentConversation?.is_starred ? 'Remove from favorites' : 'Add to favorites'}
+                    className="p-2 hover:bg-gray-100 rounded-lg"
+                    title={currentConversation?.status === 'archived' ? 'Restore conversation' : 'Archive conversation'}
                   >
-                    <Check className={`h-5 w-5 ${currentConversation?.is_starred ? 'fill-current' : ''}`} />
+                    {currentConversation?.status === 'archived' ? (
+                      <Mail className="h-5 w-5 text-gray-600" />
+                    ) : (
+                      <Archive className="h-5 w-5 text-gray-600" />
+                    )}
                   </button>
                   <button
                     onClick={handleDeleteConversation}
