@@ -26,6 +26,7 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [processedMessageIds] = useState(new Set<string>());
   const [error, setError] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -73,19 +74,22 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
           if (payload.eventType === 'INSERT') {
             const newMessage = payload.new as Message;
             console.log('New message:', newMessage);
-            
+
             setMessages(prevMessages => {
               // Check if message already exists
-              if (prevMessages.some(msg => msg.id === newMessage.id)) {
+              if (processedMessageIds.has(newMessage.id)) {
                 console.log('Message already exists, skipping');
                 return prevMessages;
               }
               
+              // Add message ID to processed set
+              processedMessageIds.add(newMessage.id);
+
               // Play sound for new messages from bot
               if (newMessage.sender_type === 'bot' && isExpanded) {
                 playNotificationSound();
               }
-              
+
               console.log('Adding new message to state');
               return [...prevMessages, newMessage];
             });
@@ -172,7 +176,14 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
         .order('created_at', { ascending: true });
 
       if (existingMessages) {
-        setMessages(existingMessages);
+        const uniqueMessages = existingMessages.filter(msg => {
+          if (processedMessageIds.has(msg.id)) {
+            return false;
+          }
+          processedMessageIds.add(msg.id);
+          return true;
+        });
+        setMessages(uniqueMessages);
       }
     } catch (error) {
       console.error('Error loading existing conversation:', error);
@@ -249,7 +260,10 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
         .eq('id', currentConversationId);
 
       // Add message to local state
-      setMessages(prev => [...prev, messageData]);
+      if (!processedMessageIds.has(messageData.id)) {
+        processedMessageIds.add(messageData.id);
+        setMessages(prev => [...prev, messageData]);
+      }
       setMessage('');
     } catch (error) {
       console.error('Error sending message:', error);
