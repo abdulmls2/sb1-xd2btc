@@ -4,6 +4,7 @@ import ConversationList from '../components/conversations/ConversationList';
 import MessageList from '../components/conversations/MessageList';
 import MessageInput from '../components/conversations/MessageInput';
 import TagSelector from '../components/conversations/TagSelector';
+import ConversationDetails from '../components/conversations/ConversationDetails';
 import { useClickOutside } from '../hooks/useClickOutside';
 import { useConversationStore } from '../lib/store/conversationStore';
 import { toast } from 'react-hot-toast';
@@ -47,6 +48,7 @@ export default function Conversations() {
   const { 
     updateConversation, 
     currentConversation, 
+    messages,
     setSortOrder, 
     setActiveFilter,
     activeFilter 
@@ -205,6 +207,11 @@ export default function Conversations() {
                   {currentConversation?.title || 'New Conversation'}
                 </h1>
                 <div className="flex items-center gap-3">
+                  <ConversationDetails
+                    createdAt={currentConversation?.created_at || new Date().toISOString()}
+                    updatedAt={currentConversation?.updated_at || new Date().toISOString()}
+                    messages={messages}
+                  />
                   <button
                     onClick={handleReadToggle}
                     className={`p-2 rounded-lg hover:bg-gray-100 ${
