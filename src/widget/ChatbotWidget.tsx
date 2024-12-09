@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Paperclip, X } from 'lucide-react';
+import { Send, Paperclip, X, Archive, MessageSquare, MessageSquarePlus, ChevronLeft } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { format } from 'date-fns';
 
@@ -20,21 +20,186 @@ interface Message {
   created_at: string;
 }
 
+interface Conversation {
+  id: string;
+  created_at: string;
+  status: 'active' | 'archived';
+  last_message_at: string;
+}
+
 export default function ChatbotWidget({ domainId }: { domainId: string }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [view, setView] = useState<'history' | 'chat'>('history');
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [processedMessageIds] = useState(new Set<string>());
   const [error, setError] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [isArchived, setIsArchived] = useState(false);
   const notificationSound = useRef<HTMLAudioElement | null>(null);
+
+  // Subscribe to new conversations
+  useEffect(() => {
+    if (!sessionId) return;
+
+    const channel = supabase
+      .channel('new-conversations')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'conversations',
+          filter: `session_id=eq.${sessionId}`,
+        },
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            setConversations(prevConversations => [payload.new, ...prevConversations]);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [sessionId]);
+
+  // Subscribe to conversation updates
+  useEffect(() => {
+    if (!sessionId) return;
+
+    const channel = supabase
+      .channel('conversations-updates')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'conversations',
+          filter: `session_id=eq.${sessionId}`,
+        },
+        (payload) => {
+          if (payload.eventType === 'UPDATE') {
+            // Update the conversation in the list
+            setConversations(prevConversations => 
+              prevConversations.map(conv => 
+                conv.id === payload.new.id ? { ...conv, ...payload.new } : conv
+              )
+            );
+
+            // If this is the current conversation, update archived status
+            if (payload.new.id === conversationId) {
+              setIsArchived(payload.new.status === 'archived');
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [sessionId, conversationId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Load conversation history
+  const loadConversationHistory = async () => {
+    if (!sessionId) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('conversations')
+        .select('*')
+        .eq('session_id', sessionId)
+        .order('last_message_at', { ascending: false });
+
+      if (error) throw error;
+      setConversations(data || []);
+    } catch (error) {
+      console.error('Error loading conversation history:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (sessionId) {
+      loadConversationHistory();
+    }
+  }, [sessionId]);
+
+  const handleStartNewConversation = async () => {
+    setMessages([]);
+    setConversationId(null);
+    setIsArchived(false);
+    setView('chat');
+  };
+
+  const handleBackToHistory = () => {
+    setView('history');
+    setMessages([]);
+    setConversationId(null);
+    setIsArchived(false);
+  };
+
+  const handleSelectConversation = async (conversation: Conversation) => {
+    try {
+      setConversationId(conversation.id);
+      setIsArchived(conversation.status === 'archived');
+      
+      const { data: messages } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversation.id)
+        .order('created_at', { ascending: true });
+
+      if (messages) {
+        setMessages(messages);
+        processedMessageIds.clear();
+        messages.forEach(msg => processedMessageIds.add(msg.id));
+      }
+      
+      setView('chat');
+    } catch (error) {
+      console.error('Error loading conversation:', error);
+    }
+  };
+
+  // Subscribe to conversation status changes
+  useEffect(() => {
+    if (!conversationId) return;
+
+    const channel = supabase
+      .channel(`conversation-status:${conversationId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'conversations',
+          filter: `id=eq.${conversationId}`,
+        },
+        (payload) => {
+          if (payload.new.status === 'archived') {
+            setIsArchived(true);
+            playNotificationSound();
+          } else {
+            setIsArchived(false);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [conversationId]);
 
   // Initialize notification sound
   useEffect(() => {
@@ -324,23 +489,84 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
         <div className="mb-4 w-[380px] bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden">
           {/* Header */}
           <div className="p-4 border-b flex items-center gap-3" style={{ backgroundColor: config.color }}>
-            <div className="relative">
+            <div className="relative flex-shrink-0">
               <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
                 <span className="text-lg">🤖</span>
               </div>
               <div className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white" style={buttonStyle}></div>
             </div>
-            <div>
+            <div className="flex-1">
               <h3 className="font-medium" style={{ color: config.headerTextColor }}>{config.chatbotName}</h3>
               <p className="text-sm" style={{ color: config.headerTextColor }}>from {config.chatbotName}</p>
             </div>
+            {view === 'chat' && (
+              <button
+                onClick={handleBackToHistory}
+                className="flex items-center gap-1 px-3 py-1.5 bg-white/20 rounded-lg text-sm"
+                style={{ color: config.headerTextColor }}
+              >
+                <MessageSquare className="h-4 w-4" />
+                History
+              </button>
+            )}
           </div>
 
           {/* Chat Area */}
-          <div className="h-[400px] overflow-y-auto p-4 bg-gray-50">
+          <div className="h-[400px] overflow-y-auto p-4 bg-gray-50 relative">
+            {view === 'history' ? (
+              <div className="space-y-4 h-full">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="font-medium text-gray-900">Conversation History</h3>
+                  <button
+                    onClick={handleStartNewConversation}
+                    className="flex items-center gap-2 px-3 py-1.5 bg-orange-500 text-white text-sm rounded-lg hover:bg-orange-600"
+                  >
+                    <MessageSquarePlus className="h-4 w-4" />
+                    Start New Chat
+                  </button>
+                </div>
+                {conversations.map((conv) => (
+                  <button
+                    key={conv.id}
+                    onClick={() => handleSelectConversation(conv)}
+                    className="w-full text-left p-4 rounded-lg hover:bg-gray-100 transition-colors border border-gray-200"
+                  >
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-sm font-medium text-gray-900">
+                        {format(new Date(conv.created_at), 'PPP')}
+                      </span>
+                      <span className={`text-xs px-2 py-1 rounded-full ${
+                        conv.status === 'archived' 
+                          ? 'bg-gray-100 text-gray-600' 
+                          : 'bg-green-100 text-green-600'
+                      }`}>
+                        {conv.status === 'archived' ? 'Archived' : 'Active'}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600">
+                      Last message: {format(new Date(conv.last_message_at), 'p')}
+                    </p>
+                  </button>
+                ))}
+                {conversations.length === 0 && (
+                  <div className="flex flex-col items-center justify-center h-full text-center">
+                    <p className="mb-4">No previous conversations found</p>
+                    <button
+                      onClick={handleStartNewConversation}
+                      className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600"
+                    >
+                      <MessageSquarePlus className="h-4 w-4" />
+                      Start Your First Chat
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
             <div className="space-y-4">
               {/* Welcome Message */}
-              <div className="flex gap-2">
+              {/* Always show greeting message in chat view */}
+              {view === 'chat' && (
+                <div className="flex gap-2">
                 <div className="w-8 h-8 rounded-full bg-gray-100 flex-shrink-0 flex items-center justify-center">
                   🤖
                 </div>
@@ -351,6 +577,7 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
                   </span>
                 </div>
               </div>
+              )}
               
               {/* Messages */}
               {messages.map((msg) => (
@@ -384,12 +611,21 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
                   )}
                 </div>
               ))}
+              {isArchived && (
+                <div className="flex justify-center">
+                  <div className="bg-gray-100 rounded-lg px-4 py-3 flex items-center gap-2 text-gray-600">
+                    <Archive className="h-4 w-4" />
+                    <span className="text-sm">This conversation has been archived</span>
+                  </div>
+                </div>
+              )}
               <div ref={messagesEndRef} />
             </div>
+            )}
           </div>
 
           {/* Input Area */}
-          <form onSubmit={handleSubmit} className="p-4 border-t bg-white">
+          {view === 'chat' && <form onSubmit={handleSubmit} className="p-4 border-t bg-white">
             <div className="flex gap-2">
               <div className="flex-1 relative">
                 <input
@@ -399,11 +635,11 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
                   placeholder="Type your message..."
                   className="w-full px-4 py-2 border rounded-full focus:outline-none focus:ring-2 pr-10 disabled:opacity-50 disabled:cursor-not-allowed"
                   style={{ '--tw-ring-color': config.color } as React.CSSProperties}
-                  disabled={isLoading} />
+                  disabled={isLoading || isArchived} />
               </div>
               <button 
                 type="submit"
-                disabled={!message.trim() || isLoading}
+                disabled={!message.trim() || isLoading || isArchived}
                 className="p-2 rounded-full text-white flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
                 style={buttonStyle}
               >
@@ -424,7 +660,7 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
                 Powered by Corinna.ai
               </a>
             </div>
-          </form>
+          </form>}
         </div>
       )}
 
