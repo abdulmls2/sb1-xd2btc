@@ -447,13 +447,12 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
   useEffect(() => {
     const fetchConfig = async () => {
       try {
-        const { data, error } = await supabase
+        const { data } = await supabase
           .from('domain_settings')
           .select('*')
           .eq('domain_id', domainId)
           .single();
 
-        if (error) throw error;
         if (data) {
           setConfig({
             chatbotName: data.chatbot_name,
@@ -461,9 +460,24 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
             color: data.primary_color || '#FF6B00',
             headerTextColor: data.header_text_color || '#000000'
           });
+        } else {
+          // Use default config if no settings exist
+          setConfig({
+            chatbotName: 'Friendly Assistant',
+            greetingMessage: 'Hello! How can I help you today?',
+            color: '#FF6B00',
+            headerTextColor: '#000000'
+          });
         }
       } catch (error) {
         console.error('Error fetching chatbot config:', error);
+        // Use default config on error
+        setConfig({
+          chatbotName: 'Friendly Assistant',
+          greetingMessage: 'Hello! How can I help you today?',
+          color: '#FF6B00',
+          headerTextColor: '#000000'
+        });
       }
     };
 
@@ -551,13 +565,6 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
                 {conversations.length === 0 && (
                   <div className="flex flex-col items-center justify-center h-full text-center">
                     <p className="mb-4">No previous conversations found</p>
-                    <button
-                      onClick={handleStartNewConversation}
-                      className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600"
-                    >
-                      <MessageSquarePlus className="h-4 w-4" />
-                      Start Your First Chat
-                    </button>
                   </div>
                 )}
               </div>
