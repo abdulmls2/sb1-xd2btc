@@ -2,13 +2,14 @@ import React, { useEffect, useRef } from 'react';
 import { useConversationStore } from '../../lib/store/conversationStore';
 import { format } from 'date-fns';
 import { supabase } from '../../lib/supabase';
+import { Archive } from 'lucide-react';
 
 interface MessageListProps {
   conversationId: string;
 }
 
 export default function MessageList({ conversationId }: MessageListProps) {
-  const { messages, fetchMessages, isLoading } = useConversationStore();
+  const { messages, fetchMessages, isLoading, currentConversation } = useConversationStore();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -70,6 +71,14 @@ export default function MessageList({ conversationId }: MessageListProps) {
             </div>
           </div>
         ))}
+        {currentConversation && currentConversation.status === 'archived' && (
+          <div className="flex justify-center">
+            <div className="bg-gray-100 rounded-lg px-4 py-3 flex items-center gap-2 text-gray-600">
+              <Archive className="h-4 w-4" />
+              <span className="text-sm">This conversation has been archived</span>
+            </div>
+          </div>
+        )}
         <div ref={messagesEndRef} />
       </div>
     </div>
