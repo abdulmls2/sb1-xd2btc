@@ -23,10 +23,10 @@
         };
     </script>
 
-    <!-- Adjust paths if necessary after deploying to Vercel -->
-    <link href="/widget/style.css" rel="stylesheet"> 
+    <!-- Corrected paths based on Vercel deployment -->
+    <link href="/dist/widget/style.css" rel="stylesheet"> 
     <script type="module">
-      import { init } from '/widget/chatbot-widget.umd.js';
+      import { init } from '/dist/widget/chatbot-widget.umd.js'; // Correct import for named export
 
       document.addEventListener('DOMContentLoaded', () => {
         const chatbotContainer = document.createElement('div');
