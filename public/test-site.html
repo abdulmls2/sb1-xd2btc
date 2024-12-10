@@ -7,7 +7,6 @@
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
 </head>
 <body>
-    <!-- Header -->
     <header class="bg-gray-900 text-white py-6">
         <div class="container mx-auto px-6">
             <h1 class="text-3xl font-bold">My Company</h1>
@@ -15,18 +14,30 @@
         </div>
     </header>
 
-    <!-- Load React and ReactDOM -->
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
 
-    <!-- Chatbot Integration -->
     <script>
         window.CHATBOT_CONFIG = {
-            domainId: "4b32ec2c-b40b-43f5-a0e1-1133ea069f41" // Replace with your actual domain ID
+            domainId: "4b32ec2c-b40b-43f5-a0e1-1133ea069f41" // Your domain ID
         };
     </script>
-    <!-- Update the paths to reflect the new public folder location -->
-    <link href="/widget/style.css" rel="stylesheet">
-    <script src="/widget/chatbot-widget.umd.js"></script>
+
+    <!-- Adjust paths if necessary after deploying to Vercel -->
+    <link href="/widget/style.css" rel="stylesheet"> 
+    <script type="module">
+      import { init } from '/widget/chatbot-widget.umd.js';
+
+      document.addEventListener('DOMContentLoaded', () => {
+        const chatbotContainer = document.createElement('div');
+        chatbotContainer.id = 'chatbot-root';
+        document.body.appendChild(chatbotContainer);
+
+        init({
+          target: chatbotContainer,
+          config: window.CHATBOT_CONFIG,
+        });
+      });
+    </script>
 </body>
 </html>

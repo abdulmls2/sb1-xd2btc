@@ -1,21 +1,21 @@
+// src/widget/main.tsx
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import ChatbotWidget from './ChatbotWidget';
-import '../index.css';
+import ChatbotWidget from './ChatbotWidget'; 
+import '../index.css'; 
 
-function initializeChatbot() {
-  // Create container for widget
-  const container = document.createElement('div');
-  container.id = 'chatbot-widget-root';
-  document.body.appendChild(container);
-
-  // Get configuration from the window object
-  const config = (window as any).CHATBOT_CONFIG || {};
-
-  // Render widget
-  const root = createRoot(container);
-  root.render(<ChatbotWidget domainId={config.domainId} />);
+interface InitOptions {
+  target: HTMLElement;
+  config?: {
+    domainId: string;
+  };
 }
 
-// Initialize when the script loads
-initializeChatbot();
+export const init = ({ target, config }: InitOptions) => {
+  const root = createRoot(target);
+  root.render(
+    <React.StrictMode>
+      <ChatbotWidget domainId={config?.domainId || ''} /> {/* Provide empty string as default */}
+    </React.StrictMode>
+  );
+};
