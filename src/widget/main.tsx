@@ -15,7 +15,7 @@ export const init = ({ target, config }: InitOptions) => {
   const root = createRoot(target);
   root.render(
     <React.StrictMode>
-      <ChatbotWidget domainId={config?.domainId || ''} /> {/* Provide empty string as default */}
+      <ChatbotWidget domainId={config?.domainId || ''} /> 
     </React.StrictMode>
   );
 };

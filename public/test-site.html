@@ -19,14 +19,13 @@
 
     <script>
         window.CHATBOT_CONFIG = {
-            domainId: "4b32ec2c-b40b-43f5-a0e1-1133ea069f41" // Your domain ID
+            domainId: "4b32ec2c-b40b-43f5-a0e1-1133ea069f41" 
         };
     </script>
 
-    <!-- Corrected paths based on Vercel deployment -->
     <link href="/widget/style.css" rel="stylesheet"> 
     <script type="module">
-      import { init } from '/widget/chatbot-widget.umd.js'; // Correct import for named export
+      import { init } from '/widget/chatbot-widget.umd.js'; 
 
       document.addEventListener('DOMContentLoaded', () => {
         const chatbotContainer = document.createElement('div');
