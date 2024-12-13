@@ -659,12 +659,12 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
             </div>
             <div className="text-center mt-2">
               <a 
-                href="https://corinna.ai" 
+                href="https://dashboard.ai" 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="text-sm text-gray-600 hover:text-gray-700"
               >
-                Powered by Corinna.ai
+                Powered by Dashboard.ai
               </a>
             </div>
           </form>}
