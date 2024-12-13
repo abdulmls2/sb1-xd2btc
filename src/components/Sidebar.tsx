@@ -117,7 +117,7 @@ export default function Sidebar({ isOpen, toggleSidebar, currentPage, onPageChan
             onClick={() => onPageChange('dashboard')}
             className="text-xl font-bold text-orange-500 hover:text-orange-600"
           >
-            corinna.ai
+            dashboard.ai
           </button>
         )}
         <button
