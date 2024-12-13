@@ -6,8 +6,10 @@ export default defineConfig({
   plugins: [react()],
   base: '',
   define: {
-    'process.env.VITE_SUPABASE_URL': JSON.stringify(process.env.VITE_SUPABASE_URL),
-    'process.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(process.env.VITE_SUPABASE_ANON_KEY)
+    'process.env': {
+      VITE_SUPABASE_URL: JSON.stringify(process.env.VITE_SUPABASE_URL),
+      VITE_SUPABASE_ANON_KEY: JSON.stringify(process.env.VITE_SUPABASE_ANON_KEY)
+    }
   },
   build: {
     lib: {
@@ -15,7 +17,7 @@ export default defineConfig({
       name: 'chatbotWidget',
       fileName: (format) => `chatbot-widget.${format}.js`
     },
-    outDir: 'dist/widget',
+    outDir: 'public/widget',
     rollupOptions: {
       external: ['react', 'react-dom'],
       output: {
