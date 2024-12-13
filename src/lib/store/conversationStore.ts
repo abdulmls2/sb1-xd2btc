@@ -65,16 +65,10 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
             filter: `domain_id=eq.${domainId}`,
           },
           async (payload) => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) return;
-
-            // Only process new conversations for the current user
-            if (payload.new && payload.new.user_id === user.id) {
-              const newConversation = payload.new as Conversation;
-              set((state) => ({
-                conversations: [newConversation, ...state.conversations]
-              }));
-            }
+            const newConversation = payload.new as Conversation;
+            set((state) => ({
+              conversations: [newConversation, ...state.conversations]
+            }));
           }
         )
         .subscribe();
@@ -116,10 +110,10 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
             )
           )
         `)
-        .eq('user_id', user.id)
         .eq('domain_id', currentDomainId)
         .neq('status', 'deleted')
         .order('last_message_at', { ascending: sortOrder === 'oldest' });
+        
 
       // Apply filter based on activeFilter
       switch (activeFilter) {
@@ -236,16 +230,17 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('User not authenticated');
+      
+      const messageData = {
+        conversation_id: conversationId,
+        content,
+        sender_type: 'bot',
+        user_id: user?.id || null
+      };
 
       const { error: messageError } = await supabase
         .from('messages')
-        .insert({
-          conversation_id: conversationId,
-          content,
-          sender_type: 'bot',
-          user_id: user.id
-        });
+        .insert(messageData);
 
       if (messageError) throw messageError;
 
