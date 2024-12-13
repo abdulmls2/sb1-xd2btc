@@ -84,7 +84,7 @@ export default function ChatbotPreview({
               </button>
             </div>
             <div className="text-center mt-2">
-              <a href="https://corinna.ai" className="text-sm text-gray-600 hover:text-gray-700">Powered by Corinna.ai</a>
+              <a href="https://dashboard.ai" className="text-sm text-gray-600 hover:text-gray-700">Powered by Dashboard.ai</a>
             </div>
           </div>
         </div>
