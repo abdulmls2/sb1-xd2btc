@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import {Hourglass, MessageCircleOff,Check, Mail, Clock, ChevronDown, Star, Trash2, Eye, EyeOff, Tag as TagIcon, ArrowUpDown, Archive } from 'lucide-react';
+import {Hourglass, MessageCircleOff, Check, Mail, Clock, ChevronDown, Star, Trash2, Eye, EyeOff, Tag as TagIcon, ArrowUpDown, Archive, Bot, UserRound } from 'lucide-react';
 import ConversationList from '../components/conversations/ConversationList';
 import MessageList from '../components/conversations/MessageList';
 import MessageInput from '../components/conversations/MessageInput';
@@ -51,7 +51,8 @@ export default function Conversations() {
     messages,
     setSortOrder, 
     setActiveFilter,
-    activeFilter 
+    activeFilter,
+    toggleLiveMode 
   } = useConversationStore();
 
   // Refs for dropdown menus
@@ -116,8 +117,7 @@ export default function Conversations() {
               <button
                 key={filter.id}
                 onClick={() => setActiveFilter(filter.id as 'active' | 'all' | 'urgent' | 'closed')}
-                className={`
-                  flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium 
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium 
                   transition-all duration-200 border-2
                   ${
                     activeFilter === filter.id 
@@ -212,6 +212,30 @@ export default function Conversations() {
                     updatedAt={currentConversation?.updated_at || new Date().toISOString()}
                     messages={messages}
                   />
+                  <div className="relative inline-flex items-center gap-1 p-1 bg-gray-200 rounded-lg" title={currentConversation?.live_mode ? 'Switch to bot mode' : 'Switch to live mode'}>
+                    <button
+                      onClick={() => selectedConversationId && toggleLiveMode(selectedConversationId)}
+                      className={`flex items-center gap-1 px-3 py-1.5 rounded transition-all duration-200 ${
+                        !currentConversation?.live_mode 
+                          ? 'bg-white text-gray-900 font-semibold shadow-md ring-2 ring-gray-900/5 scale-105' 
+                          : 'text-gray-500 hover:text-gray-700'
+                      }`}
+                    >
+                      <Bot className="h-4 w-4" />
+                      <span className="text-xs font-medium">Bot</span>
+                    </button>
+                    <button
+                      onClick={() => selectedConversationId && toggleLiveMode(selectedConversationId)}
+                      className={`flex items-center gap-1 px-3 py-1.5 rounded transition-all duration-200 ${
+                        currentConversation?.live_mode 
+                          ? 'bg-white text-green-700 font-semibold shadow-md ring-2 ring-green-600/20 scale-105' 
+                          : 'text-gray-500 hover:text-gray-700'
+                      }`}
+                    >
+                      <UserRound className="h-4 w-4" />
+                      <span className="text-xs font-medium">Live</span>
+                    </button>
+                  </div>
                   <button
                     onClick={handleReadToggle}
                     className={`p-2 rounded-lg hover:bg-gray-100 ${
@@ -245,10 +269,8 @@ export default function Conversations() {
                   </button>
                 </div>
               </div>
-
               <TagSelector conversationId={selectedConversationId} />
             </div>
-
             <MessageList conversationId={selectedConversationId} />
             <MessageInput conversationId={selectedConversationId} />
           </>

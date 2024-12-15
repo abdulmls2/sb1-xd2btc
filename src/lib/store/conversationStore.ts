@@ -33,6 +33,7 @@ interface ConversationStore {
   setSortOrder: (order: 'newest' | 'oldest') => void;
   activeFilter: 'active' | 'all' | 'urgent' | 'closed';
   setActiveFilter: (filter: 'active' | 'all' | 'urgent' | 'closed') => void;
+  toggleLiveMode: (conversationId: string) => Promise<void>;
 }
 
 export const useConversationStore = create<ConversationStore>((set, get) => ({
@@ -433,6 +434,30 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
       toast.error('Failed to delete tag: ' + error.message);
     } finally {
       set({ isLoading: false });
+    }
+  },
+
+  toggleLiveMode: async (conversationId: string) => {
+    try {
+      const { data: conversation } = await supabase
+        .from('conversations')
+        .select('live_mode')
+        .eq('id', conversationId)
+        .single();
+
+      const { error } = await supabase
+        .from('conversations')
+        .update({ live_mode: !conversation.live_mode })
+        .eq('id', conversationId);
+
+      if (error) throw error;
+
+      // Refetch conversation to update local state
+      await get().fetchMessages(conversationId);
+      toast.success(conversation.live_mode ? 'Bot mode enabled' : 'Live mode enabled');
+    } catch (error: any) {
+      console.error('Error toggling live mode:', error);
+      toast.error('Failed to toggle live mode');
     }
   },
 

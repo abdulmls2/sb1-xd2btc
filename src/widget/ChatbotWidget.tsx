@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Send, Paperclip, X, Archive, MessageSquare, MessageSquarePlus, ChevronLeft } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { format } from 'date-fns';
+import { useConversationStore } from '../lib/store/conversationStore';
+import { useChatbotStore } from '../lib/store/chatbotStore';
 
 const SESSION_KEY = 'chatbot_session_id';
 const CONVERSATION_EXPIRY_DAYS = 180; // 6 months default expiry
@@ -41,6 +43,7 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [isArchived, setIsArchived] = useState(false);
   const notificationSound = useRef<HTMLAudioElement | null>(null);
+  const { sendMessage: chatbotSendMessage } = useChatbotStore();
 
   // Subscribe to new conversations
   useEffect(() => {
@@ -393,8 +396,6 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         await supabase.auth.signInAnonymously();
-        const { data: { user: anonUser } } = await supabase.auth.getUser();
-        if (!anonUser) throw new Error('Failed to create anonymous session');
       }
       
       // Create a new conversation if one doesn't exist
@@ -403,32 +404,9 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
         setConversationId(currentConversationId);
       }
 
-      // Insert the message
-      const { data: messageData, error: messageError } = await supabase
-        .from('messages')
-        .insert({
-          conversation_id: currentConversationId,
-          user_id: user.id,
-          content,
-          sender_type: 'user',
-          created_at: new Date().toISOString()
-        })
-        .select()
-        .single();
+      // Send message through chatbot store which will handle OpenAI integration
+      await chatbotSendMessage(content, currentConversationId);
 
-      if (messageError) throw messageError;
-
-      // Update conversation last_message_at
-      await supabase
-        .from('conversations')
-        .update({ last_message_at: new Date().toISOString() })
-        .eq('id', currentConversationId);
-
-      // Add message to local state
-      if (!processedMessageIds.has(messageData.id)) {
-        processedMessageIds.add(messageData.id);
-        setMessages(prev => [...prev, messageData]);
-      }
       setMessage('');
     } catch (error) {
       console.error('Error sending message:', error);
