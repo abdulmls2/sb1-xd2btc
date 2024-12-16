@@ -254,7 +254,7 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
               processedMessageIds.add(newMessage.id);
 
               // Play sound for new messages from bot
-              if (newMessage.sender_type === 'bot' && isExpanded) {
+              if (newMessage.sender_type === 'bot') {
                 playNotificationSound();
               }
 
@@ -283,6 +283,13 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
       channel.unsubscribe();
     };
   }, [conversationId, isExpanded]);
+
+  // Scroll down when widget reopened
+  useEffect(() => {
+    if (isExpanded && messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [isExpanded]);
 
   useEffect(() => {
     // Initialize session and load existing conversation
