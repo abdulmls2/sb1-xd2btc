@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Paperclip, X, Archive, MessageSquare, MessageSquarePlus, ChevronLeft } from 'lucide-react';
+import { Send, Paperclip, X, Archive, MessageSquare, MessageSquarePlus, ChevronLeft, RefreshCw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { format } from 'date-fns';
 import { useConversationStore } from '../lib/store/conversationStore';
@@ -45,6 +45,20 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
   const notificationSound = useRef<HTMLAudioElement | null>(null);
   const { sendMessage: chatbotSendMessage } = useChatbotStore();
 
+  // Add this helper function at the top of the component
+  const isMessageDuplicate = (newMsg: Message, existingMessages: Message[]) => {
+    return existingMessages.some(msg => 
+      // Check for exact ID match
+      msg.id === newMsg.id ||
+      // Check for temp ID being replaced by real ID
+      (msg.id.startsWith('temp-') && msg.content === newMsg.content && msg.sender_type === newMsg.sender_type) ||
+      // Check for exact content match within a small time window (2 seconds)
+      (msg.content === newMsg.content && 
+       msg.sender_type === newMsg.sender_type && 
+       Math.abs(new Date(msg.created_at).getTime() - new Date(newMsg.created_at).getTime()) < 2000)
+    );
+  };
+
   // Subscribe to new conversations
   useEffect(() => {
     if (!sessionId) return;
@@ -61,7 +75,8 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
         },
         (payload) => {
           if (payload.eventType === 'INSERT') {
-            setConversations(prevConversations => [payload.new, ...prevConversations]);
+            const newConversation = payload.new as Conversation;
+            setConversations(prevConversations => [newConversation, ...prevConversations]);
           }
         }
       )
@@ -110,8 +125,10 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
   }, [sessionId, conversationId]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    if (isExpanded) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, isExpanded]);
 
   // Load conversation history
   const loadConversationHistory = async () => {
@@ -227,11 +244,11 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
 
     console.log('Setting up subscription for conversation:', conversationId);
 
-    const channel = supabase.channel('messages')
+    const channel = supabase.channel(`messages-${conversationId}`)
       .on(
         'postgres_changes',
         {
-          event: '*', // Listen to all events (INSERT, UPDATE, DELETE)
+          event: '*',
           schema: 'public',
           table: 'messages',
           filter: `conversation_id=eq.${conversationId}`
@@ -244,52 +261,43 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
             console.log('New message:', newMessage);
 
             setMessages(prevMessages => {
-              // Check if message already exists
-              if (processedMessageIds.has(newMessage.id)) {
+              // Use the enhanced duplicate detection
+              if (isMessageDuplicate(newMessage, prevMessages)) {
                 console.log('Message already exists, skipping');
                 return prevMessages;
               }
-              
+
+              // If this is a real message replacing a temp message, remove the temp message
+              const updatedMessages = prevMessages.filter(msg => 
+                !(msg.id.startsWith('temp-') && 
+                  msg.content === newMessage.content && 
+                  msg.sender_type === newMessage.sender_type)
+              );
+
               // Add message ID to processed set
               processedMessageIds.add(newMessage.id);
 
-              // Play sound for new messages from bot
+              // Play sound for all bot messages, regardless of widget state
               if (newMessage.sender_type === 'bot') {
                 playNotificationSound();
               }
 
               console.log('Adding new message to state');
-              return [...prevMessages, newMessage];
+              return [...updatedMessages, newMessage];
             });
           }
         }
       );
 
-    // Subscribe and log status
     channel.subscribe((status) => {
       console.log('Subscription status:', status);
-      if (status === 'SUBSCRIBED') {
-        console.log('Successfully subscribed to messages');
-      } else if (status === 'CLOSED') {
-        console.log('Subscription closed');
-      } else if (status === 'CHANNEL_ERROR') {
-        console.error('Subscription error');
-      }
     });
 
-    // Cleanup subscription
     return () => {
       console.log('Cleaning up subscription for conversation:', conversationId);
       channel.unsubscribe();
     };
   }, [conversationId, isExpanded]);
-
-  // Scroll down when widget reopened
-  useEffect(() => {
-    if (isExpanded && messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [isExpanded]);
 
   useEffect(() => {
     // Initialize session and load existing conversation
@@ -311,22 +319,24 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
 
   const loadExistingConversation = async (currentSessionId: string) => {
     try {
-      const { data: conversation, error } = await supabase
+      // First check if there are any conversations
+      const { data: conversations, error: fetchError } = await supabase
         .from('conversations')
         .select('*')
         .eq('session_id', currentSessionId)
         .eq('status', 'active')
         .order('last_message_at', { ascending: false })
-        .limit(1)
-        .single();
+        .limit(1);
 
-      if (error) {
-        if (error.code === 'PGRST116') {
-          // No conversation found for this session, will create new one when needed
-          return;
-        }
-        throw error;
+      if (fetchError) throw fetchError;
+      
+      // If no conversations found, return early
+      if (!conversations || conversations.length === 0) {
+        console.log('No active conversations found for this session');
+        return;
       }
+
+      const conversation = conversations[0];
 
       // Check if conversation has expired
       const expiryDate = new Date();
@@ -361,26 +371,47 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
         setMessages(uniqueMessages);
       }
     } catch (error) {
-      console.error('Error loading existing conversation:', error);
-      setError('Failed to load conversation history');
+      // Only log actual errors, not "no results" cases
+      if (error instanceof Error && !error.message.includes('no rows returned')) {
+        console.error('Error loading existing conversation:', error);
+        setError('Failed to load conversation history');
+      }
     }
   };
 
   const createConversation = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
+      
+      // If no user, create anonymous session
       if (!user) {
         await supabase.auth.signInAnonymously();
         const { data: { user: anonUser } } = await supabase.auth.getUser();
         if (!anonUser) throw new Error('Failed to create anonymous session');
+        
+        const { data, error } = await supabase
+          .from('conversations')
+          .insert({
+            domain_id: domainId,
+            user_id: anonUser.id,
+            session_id: sessionId,
+            last_message_at: new Date().toISOString(),
+            status: 'active'
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+        return data.id;
       }
 
+      // If user exists, proceed with user.id
       const { data, error } = await supabase
         .from('conversations')
         .insert({
           domain_id: domainId,
           user_id: user.id,
-          session_id: sessionId, // Add the session_id
+          session_id: sessionId,
           last_message_at: new Date().toISOString(),
           status: 'active'
         })
@@ -410,6 +441,22 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
       if (!conversationId) {
         setConversationId(currentConversationId);
       }
+
+      // Create a temporary message object for immediate display
+      const tempMessage: Message = {
+        id: `temp-${Date.now()}`,
+        content: content,
+        sender_type: 'user',
+        created_at: new Date().toISOString(),
+      };
+
+      // Add to messages only if it's not a duplicate
+      setMessages(prevMessages => {
+        if (isMessageDuplicate(tempMessage, prevMessages)) {
+          return prevMessages;
+        }
+        return [...prevMessages, tempMessage];
+      });
 
       // Send message through chatbot store which will handle OpenAI integration
       await chatbotSendMessage(content, currentConversationId);
@@ -482,6 +529,32 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
     backgroundColor: config.color,
   };
 
+  // Add this function near your other handler functions
+  const handleRefreshChat = async () => {
+    if (conversationId) {
+      try {
+        // Clear current messages
+        setMessages([]);
+        processedMessageIds.clear();
+        
+        // Reload messages for current conversation
+        const { data: messages } = await supabase
+          .from('messages')
+          .select('*')
+          .eq('conversation_id', conversationId)
+          .order('created_at', { ascending: true });
+
+        if (messages) {
+          setMessages(messages);
+          messages.forEach(msg => processedMessageIds.add(msg.id));
+        }
+      } catch (error) {
+        console.error('Error refreshing chat:', error);
+        setError('Failed to refresh chat');
+      }
+    }
+  };
+
   return (
     <div className="fixed bottom-6 right-6 flex flex-col items-end z-[9999]">
       {isExpanded && (
@@ -499,14 +572,23 @@ export default function ChatbotWidget({ domainId }: { domainId: string }) {
               <p className="text-sm" style={{ color: config.headerTextColor }}>from {config.chatbotName}</p>
             </div>
             {view === 'chat' && (
-              <button
-                onClick={handleBackToHistory}
-                className="flex items-center gap-1 px-3 py-1.5 bg-white/20 rounded-lg text-sm"
-                style={{ color: config.headerTextColor }}
-              >
-                <MessageSquare className="h-4 w-4" />
-                History
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleRefreshChat}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-white/20 rounded-lg text-sm"
+                  style={{ color: config.headerTextColor }}
+                  title="Refresh chat"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={handleBackToHistory}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-white/20 rounded-lg text-sm"
+                  style={{ color: config.headerTextColor }}
+                >
+                  <MessageSquare className="h-4 w-4" />
+                </button>
+              </div>
             )}
           </div>
 
